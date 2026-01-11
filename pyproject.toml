@@ -1,0 +1,63 @@
+[project]
+name = "rag-st"
+version = "0.1.0"
+description = "RAG application with FastAPI backend and Next.js frontend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.128.0",
+    "uvloop>=0.22.1",
+    "uvicorn[standard]>=0.32.1",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "pyjwt>=2.8.0",
+    "sqlalchemy>=2.0.45",
+    "greenlet>=3.0.0",
+    "aiosqlite>=0.19.0",
+    "orjson>=3.9.0",
+    "bcrypt>=4.0.0",
+    "email-validator>=2.0.0",
+    "jinja2>=3.1.0",
+    "pyyaml>=6.0.0",
+    # RAG 相关依赖
+    "python-socketio>=5.11.0",
+    "aiohttp>=3.9.0",
+    # Chroma 向量数据库
+    "chromadb>=0.4.0",
+    # Milvus 向量数据库（可选）
+    "pymilvus>=2.4.0",
+    # Embedding 和 LLM
+    "numpy>=1.24.0",
+    "httpx>=0.27.0",
+    # 文档处理
+    "PyPDF2>=3.0.0",
+    "python-docx>=1.0.0",
+    "pdfplumber>=0.10.0",
+    "python-multipart>=0.0.21",
+]
+
+[project.optional-dependencies]
+# Sentence Transformers embedding 模型（可选）
+sentence-transformers = [
+    "sentence-transformers>=2.2.0",
+]
+
+# Milvus 向量数据库
+milvus = [
+    "pymilvus>=2.4.0",
+]
+
+# 文档处理完整依赖
+docs = [
+    "PyPDF2>=3.0.0",
+    "python-docx>=1.0.0",
+    "pdfplumber>=0.10.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=0.6.0",
+]
+
+# 所有可选依赖
+all = [
+    "rag-st[sentence-transformers,milvus,docs]",
+]
