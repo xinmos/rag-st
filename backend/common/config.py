@@ -21,8 +21,12 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = False
 
-    # 文件上传配置
-    upload_dir: str = "uploads"  # 文件上传目录
+    # MinIO 配置
+    minio_endpoint: str = "192.168.1.6:9000"  # MinIO 服务地址
+    minio_access_key: str = "P2T38QDJEq0lIkTYv1rQ"  # MinIO 访问密钥
+    minio_secret_key: str = "FdDi6mSICIkMLpshK6zvcC27unFWOLgYWHtow896"  # MinIO 秘密密钥
+    minio_bucket_name: str = "rag-documents"  # 存储桶名称
+    minio_secure: bool = False  # 是否使用 HTTPS
 
     # 向量数据库配置
     # 支持: chroma, milvus
@@ -67,6 +71,10 @@ class Settings(BaseSettings):
     log_to_console: bool = True  # 是否输出到控制台
     log_max_bytes: int = 10 * 1024 * 1024  # 单个日志文件最大字节数 (10MB)
     log_backup_count: int = 5  # 保留的备份文件数量
+
+    # 文件上传配置
+    max_file_size: int = 100 * 1024 * 1024  # 最大文件大小 (100MB)
+    max_file_size_mb: int = 100  # 最大文件大小 (MB) - 用于错误提示
 
     model_config = SettingsConfigDict(
         env_file=".env",

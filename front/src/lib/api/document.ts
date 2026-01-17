@@ -109,4 +109,108 @@ export const documentApi = {
       { params: { knowledge_base_id: knowledgeBaseId, document_id: documentId } }
     );
   },
+
+  /**
+   * Preview document - returns blob URL
+   */
+  preview: async (documentId: number): Promise<string> => {
+    if (USE_MOCK_API) {
+      // Mock: return a dummy blob URL
+      const mockContent = 'Mock document content';
+      const blob = new Blob([mockContent], { type: 'application/pdf' });
+      return Promise.resolve(URL.createObjectURL(blob));
+    }
+
+    try {
+      const response = await apiClient.get(`/api/v1/document/preview/${documentId}`, {
+        responseType: 'blob',
+      });
+
+      console.log('[preview] Response:', {
+        status: response.status,
+        headers: response.headers,
+        dataType: typeof response.data,
+        dataIsBlob: response.data instanceof Blob,
+        dataSize: response.data?.size,
+      });
+
+      // Handle different response structures
+      let blobData: Blob;
+      if (response.data instanceof Blob) {
+        blobData = response.data;
+      } else {
+        console.warn('[preview] Response data is not a Blob, converting...');
+        blobData = new Blob([response.data]);
+      }
+
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      return URL.createObjectURL(blobData);
+    } catch (error) {
+      console.error('[preview] Error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Download document - triggers browser download
+   */
+  download: async (documentId: number, fileName: string): Promise<void> => {
+    if (USE_MOCK_API) {
+      // Mock: create a dummy file and trigger download
+      const mockContent = 'Mock document content';
+      const blob = new Blob([mockContent], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return Promise.resolve();
+    }
+
+    console.log('[download] Starting download for document:', documentId, fileName);
+
+    try {
+      const response = await apiClient.get(`/api/v1/document/preview/${documentId}`, {
+        responseType: 'blob',
+      });
+
+      console.log('[download] Response:', {
+        status: response.status,
+        headers: response.headers,
+        dataType: typeof response.data,
+        dataIsBlob: response.data instanceof Blob,
+        dataSize: response.data?.size,
+      });
+
+      // Handle different response structures
+      let blobData: Blob;
+      if (response.data instanceof Blob) {
+        blobData = response.data;
+      } else {
+        console.warn('[download] Response data is not a Blob, converting...');
+        blobData = new Blob([response.data]);
+      }
+
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      const url = URL.createObjectURL(blobData);
+
+      console.log('[download] Created blob URL:', url, 'size:', blobData.size, 'type:', contentType);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      console.log('[download] Download triggered successfully');
+    } catch (error) {
+      console.error('[download] Error:', error);
+      throw error;
+    }
+  },
 };

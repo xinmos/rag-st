@@ -60,6 +60,9 @@ uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 uv run python -m backend.init_db
 ```
 
+**Dependencies added:**
+- `minio>=7.2.0` - MinIO Python SDK for object storage
+
 ### Frontend (Next.js)
 
 ```bash
@@ -94,8 +97,17 @@ backend/
 │   ├── orm/                # Database ORM base classes
 │   └── utils.py            # Shared utilities
 ├── models/                 # SQLAlchemy models
+├── processor/              # Document processing and RAG pipeline
+│   ├── text_extractor.py   # Extract text from PDF/DOCX/TXT
+│   ├── text_chunker.py     # Split text into chunks
+│   ├── embedding_service.py # Generate embeddings
+│   ├── chroma_service.py   # Chroma vector DB operations
+│   ├── milvus_service.py   # Milvus vector DB operations
+│   ├── vector_service.py   # Unified vector DB interface
+│   └── llm_service.py      # LLM backend (Ollama/OpenAI/Mock)
 ├── router/web/             # API endpoints (user management)
 └── services/               # Business logic layer
+    ├── minio_service.py    # MinIO object storage operations
 ```
 
 #### Key Backend Patterns
@@ -147,6 +159,29 @@ async def background_task(document_id: int):
 
 See `backend/services/document_service.py:_process_document_async` for a complete example.
 
+**Document Processing Pipeline**
+When a document is uploaded, it goes through an async pipeline:
+1. Upload to MinIO (create Document record with status="processing")
+2. Download from MinIO to temp file
+3. Extract text using `TextExtractor` (supports PDF, DOCX, TXT, MD)
+4. Split into chunks using `TextChunker` (default: 500 chars, 50 overlap)
+5. Generate embeddings using `EmbeddingService` (Ollama nomic-embed-text → 768d vectors)
+6. Store in vector DB (Chroma or Milvus) via `VectorDBService`
+7. Update Document status to "completed" or "failed"
+
+Progress updates (10%, 20%, 40%, 60%, 80%, 100%) are committed to the database.
+
+**RAG Chat Pipeline**
+When a user asks a question:
+1. Verify user is authenticated and knowledge base exists
+2. Generate embedding for user's query using `EmbeddingService`
+3. Search vector DB for relevant document chunks using `VectorDBService.search()`
+4. Build prompt with retrieved context
+5. Stream response from LLM (Ollama qwen2.5:7b) via `LLMService.stream_chat()`
+6. Return streaming response via Socket.IO
+
+See `backend/services/rag_service.py:chat()` for the implementation.
+
 **Request Context (`common/context.py`)**
 - Uses `contextvars` for request-scoped data
 - `RequestContext` stores session, user_id, path, method
@@ -192,6 +227,15 @@ import orjson
 orjson.dumps(obj, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
 orjson.loads(body)
 ```
+
+**MinIO Object Storage**
+Document files are stored in MinIO instead of local filesystem:
+- `services/minio_service.py` - MinIO client wrapper with upload/download/delete operations
+- Documents uploaded via `DocumentService.upload_document()` are stored in MinIO
+- The `file_path` field in the Document model stores the MinIO object name (format: `knowledge_bases/{kb_id}/{filename}`)
+- When processing documents, files are downloaded from MinIO to a temporary directory
+- MinIO endpoint is auto-cleaned to remove protocol prefixes and paths (only `host:port` is used)
+- API endpoint: `GET /api/v1/document/preview/{document_id}` - Returns file stream for preview/download
 
 ### Frontend Structure
 
@@ -354,6 +398,11 @@ export const featureApi = {
 - `JWT_SECRET` - JWT signing secret
 - `JWT_ALGORITHM` - JWT algorithm (default: `HS256`)
 - `DEBUG` - Enable debug mode and SQL logging
+- `minio_endpoint` - MinIO server address (e.g., `192.168.1.6:9000` or `localhost:9000`)
+- `minio_access_key` - MinIO access key
+- `minio_secret_key` - MinIO secret key
+- `minio_bucket_name` - MinIO bucket name (default: `rag-document`)
+- `minio_secure` - Use HTTPS for MinIO (default: `false`)
 
 ### Frontend Environment Variables
 - `NEXT_PUBLIC_API_URL` - Backend API URL (default: `http://localhost:8000`)
@@ -368,6 +417,8 @@ export const featureApi = {
 - ✅ Chat interface with Socket.IO streaming
 - ✅ Knowledge base management (CRUD with Chroma vector DB)
 - ✅ Document management (upload, process, vectorize)
+- ✅ MinIO object storage for document files
+- ✅ Document preview and download functionality
 - ✅ RAG chat with Ollama (qwen2.5:7b)
 - ✅ Embedding with Ollama (nomic-embed-text)
 
@@ -409,6 +460,13 @@ stmt = select(KnowledgeBase).join(Document, KnowledgeBase.id == Document.knowled
 ### Import Statement Rules
 
 **All import statements should be at the top of the file, unless encountering circular dependencies.**
+
+**Note on HTTPException**: In routers, import HTTPException from `fastapi`, and `status` from `starlette`:
+```python
+from fastapi import File, UploadFile, Form, HTTPException
+from fastapi.responses import Response
+from starlette import status
+```
 
 - ✅ Standard practice - imports at the top:
 ```python

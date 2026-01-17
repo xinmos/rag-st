@@ -25,7 +25,14 @@ apiClient.interceptors.request.use(
 
 // Response interceptor: Handle auth errors
 apiClient.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // For blob responses, return the full response to access headers
+    if (response.config.responseType === 'blob') {
+      return response;
+    }
+    // For JSON responses, return only data
+    return response.data;
+  },
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       removeToken();

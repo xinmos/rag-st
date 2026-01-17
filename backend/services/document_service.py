@@ -1,5 +1,6 @@
 import asyncio
 import os
+import tempfile
 from pathlib import Path
 
 from fastapi import HTTPException, status, UploadFile
@@ -18,19 +19,13 @@ from models.document import Document
 from models.knowledge_base import KnowledgeBase
 from processor import TextExtractor, TextChunker, get_embedding_service
 from processor import get_vector_db_service
+from services.minio_service import get_minio_service
 
 logger = get_logger(__name__)
 
 
 class DocumentService:
     """文档相关业务逻辑"""
-
-    @staticmethod
-    def get_upload_dir(knowledge_base_id: int) -> Path:
-        """获取知识库文件上传目录"""
-        upload_dir = Path(settings.upload_dir) / "knowledge_bases" / str(knowledge_base_id)
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        return upload_dir
 
     @staticmethod
     async def upload_document(
@@ -66,24 +61,27 @@ class DocumentService:
                 detail="知识库不存在"
             )
 
-        # 生成安全的文件名
+        # 生成唯一的对象名称
         file_ext = os.path.splitext(file.filename)[1]
-        safe_filename = f"{int(asyncio.get_event_loop().time() * 1000)}{file_ext}"
+        timestamp = int(asyncio.get_event_loop().time() * 1000)
+        safe_filename = f"{timestamp}_{file.filename}"
 
-        # 保存文件
-        upload_dir = DocumentService.get_upload_dir(knowledge_base_id)
-        file_path = upload_dir / safe_filename
+        # 上传文件到 MinIO
+        minio_service = get_minio_service()
+        object_name = await minio_service.upload_file(
+            knowledge_base_id=knowledge_base_id,
+            filename=safe_filename,
+            file_data=file_content,
+            content_type=file.content_type or "application/octet-stream"
+        )
 
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-
-        # 创建文档记录
+        # 创建文档记录（file_path 存储 MinIO 对象名称）
         new_doc = await Document.create(
             knowledge_base_id=knowledge_base_id,
             file_name=file.filename,
             file_size=file_size,
             file_type=file.content_type or "application/octet-stream",
-            file_path=str(file_path),
+            file_path=object_name,
             status="processing",
             progress=0
         )
@@ -93,7 +91,7 @@ class DocumentService:
         # 异步处理文档（向量化）
         logger.info(f"🔄 启动后台处理任务: 文档ID={new_doc.id}")
         task = asyncio.create_task(
-            DocumentService._process_document_async(new_doc.id, knowledge_base_id, str(file_path), file.filename)
+            DocumentService._process_document_async(new_doc.id, knowledge_base_id, object_name, file.filename)
         )
         # 添加错误处理，避免任务静默失败
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -110,13 +108,15 @@ class DocumentService:
         )
 
     @staticmethod
-    async def _process_document_async(document_id: int, knowledge_base_id: int, file_path: str, file_name: str):
+    async def _process_document_async(document_id: int, knowledge_base_id: int, object_name: str, file_name: str):
         """
         异步处理文档（提取文本、分块、向量化）
         """
 
         # 创建新的 session 用于后台任务
         async with AsyncSessionLocal() as session:
+            # 临时文件路径（用于下载 MinIO 文件进行文本提取）
+            temp_file_path = None
             try:
                 async with use_test_session(session):
                     logger.info(f"🚀 开始处理文档: {file_name} (ID: {document_id})")
@@ -125,10 +125,27 @@ class DocumentService:
                     await Document.update_by_id(document_id, progress=10)
                     await session.commit()
 
+                    # 从 MinIO 流式下载文件到临时目录（避免将整个文件加载到内存）
+                    logger.info(f"📥 [1/5] 正在下载文件: {file_name}")
+                    minio_service = get_minio_service()
+
+                    # 创建临时文件
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file_name)[1]) as temp_file:
+                        temp_file_path = temp_file.name
+
+                    # 流式下载到临时文件
+                    downloaded_size = await minio_service.download_to_file(object_name, temp_file_path)
+
+                    logger.info(f"✅ 文件下载成功: {downloaded_size} bytes")
+
+                    # 更新进度: 20%
+                    await Document.update_by_id(document_id, progress=20)
+                    await session.commit()
+
                     # 1. 提取文本
-                    logger.info(f"📖 [1/4] 正在提取文本: {file_name}")
+                    logger.info(f"📖 [2/5] 正在提取文本: {file_name}")
                     text_extractor = TextExtractor()
-                    text = text_extractor.extract_text(file_path)
+                    text = text_extractor.extract_text(temp_file_path)
 
                     if not text or len(text.strip()) < 10:
                         raise ValueError("提取的文本内容太少或为空")
@@ -136,12 +153,12 @@ class DocumentService:
                     text_length = len(text)
                     logger.info(f"✅ 文本提取成功: {text_length} 字符")
 
-                    # 更新进度: 30%
-                    await Document.update_by_id(document_id, progress=30)
+                    # 更新进度: 40%
+                    await Document.update_by_id(document_id, progress=40)
                     await session.commit()
 
                     # 2. 文本分块
-                    logger.info(f"✂️ [2/4] 正在分块文本: {file_name}")
+                    logger.info(f"✂️ [3/5] 正在分块文本: {file_name}")
                     chunker = TextChunker(chunk_size=500, chunk_overlap=50)
                     chunks = chunker.chunk_text(text)
 
@@ -150,12 +167,12 @@ class DocumentService:
 
                     logger.info(f"✅ 文本分块完成: {len(chunks)} 个块")
 
-                    # 更新进度: 50%
-                    await Document.update_by_id(document_id, progress=50)
+                    # 更新进度: 60%
+                    await Document.update_by_id(document_id, progress=60)
                     await session.commit()
 
                     # 3. 向量化
-                    logger.info(f"🔢 [3/4] 正在生成向量嵌入: {file_name} ({len(chunks)} 个块)")
+                    logger.info(f"🔢 [4/5] 正在生成向量嵌入: {file_name} ({len(chunks)} 个块)")
                     embedding_service = get_embedding_service()
                     chunk_texts = [chunk.text for chunk in chunks]
 
@@ -163,12 +180,12 @@ class DocumentService:
 
                     logger.info(f"✅ 向量嵌入生成完成: shape={embeddings.shape}")
 
-                    # 更新进度: 70%
-                    await Document.update_by_id(document_id, progress=70)
+                    # 更新进度: 80%
+                    await Document.update_by_id(document_id, progress=80)
                     await session.commit()
 
                     # 4. 存储到向量数据库
-                    logger.info(f"💾 [4/4] 正在存储到向量数据库: {file_name}")
+                    logger.info(f"💾 [5/5] 正在存储到向量数据库: {file_name}")
                     vector_db_service = get_vector_db_service()
                     chunk_data = [
                         (chunk.chunk_id, chunk.text, embedding.tolist())
@@ -200,6 +217,12 @@ class DocumentService:
                     )
                     await session.commit()
             finally:
+                # 清理临时文件
+                if temp_file_path and os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except Exception as e:
+                        logger.warning(f"清理临时文件失败: {e}")
                 await session.close()
 
     @staticmethod
@@ -304,13 +327,15 @@ class DocumentService:
             logger = get_logger(__name__)
             logger.error(f"删除文档向量失败: {e}")
 
-        # 删除文件
-        if doc.file_path and os.path.exists(doc.file_path):
+        # 删除 MinIO 中的文件
+        if doc.file_path:
             try:
-                os.remove(doc.file_path)
+                minio_service = get_minio_service()
+                await minio_service.delete_file(doc.file_path)
+                logger.info(f"✅ 从 MinIO 删除文件成功: {doc.file_path}")
             except Exception as e:
-                # 文件删除失败，继续删除数据库记录
-                pass
+                # 文件删除失败，记录日志但继续删除数据库记录
+                logger.warning(f"MinIO 文件删除失败: {e}")
 
         # 执行删除
         deleted = await Document.delete_by_id(document_id)
