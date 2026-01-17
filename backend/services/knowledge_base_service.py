@@ -7,6 +7,8 @@ from common.entity.schemas.knowledge_base import (
     KnowledgeBaseResponse,
     KnowledgeBaseListResponse,
 )
+from models.knowledge_base import KnowledgeBase
+from processor import get_vector_db_service
 
 
 class KnowledgeBaseService:
@@ -23,8 +25,6 @@ class KnowledgeBaseService:
         Returns:
             KnowledgeBaseResponse: 创建的知识库信息
         """
-        from models.knowledge_base import KnowledgeBase
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(
@@ -62,8 +62,6 @@ class KnowledgeBaseService:
         Returns:
             KnowledgeBaseListResponse: 知识库列表和总数
         """
-        from models.knowledge_base import KnowledgeBase
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(
@@ -105,8 +103,6 @@ class KnowledgeBaseService:
         Raises:
             HTTPException: 知识库不存在
         """
-        from models.knowledge_base import KnowledgeBase
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(
@@ -207,9 +203,6 @@ class KnowledgeBaseService:
         Raises:
             HTTPException: 知识库不存在或删除失败
         """
-        from models.knowledge_base import KnowledgeBase
-        from processor import get_vector_db_service
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(

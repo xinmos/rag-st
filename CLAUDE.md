@@ -405,3 +405,32 @@ stmt = select(KnowledgeBase).join(Document, KnowledgeBase.id == Document.knowled
 - `common.config` (if needed)
 
 **All cross-model queries must be done in the service layer, not in the model itself.**
+
+### Import Statement Rules
+
+**All import statements should be at the top of the file, unless encountering circular dependencies.**
+
+- ✅ Standard practice - imports at the top:
+```python
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String
+from common.orm.base_model import Base, TimestampMixin
+
+class MyModel(Base, TimestampMixin):
+    pass
+```
+
+- ⚠️ Exception - local imports for circular dependencies:
+```python
+# Only use local imports when necessary to avoid circular imports
+async def some_function():
+    from models.other_model import OtherModel  # Local import
+    # ... use OtherModel
+```
+
+**When to use local imports:**
+- Breaking circular dependencies between modules
+- Lazy imports in async functions to avoid startup overhead (rare)
+- Type hints inside `if TYPE_CHECKING:` blocks
+
+**Otherwise, always keep imports at the top of the file for better readability and performance.**

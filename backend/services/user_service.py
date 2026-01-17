@@ -1,4 +1,4 @@
-from typing import Optional, List
+from fastapi import HTTPException, status
 
 from common.context import get_request_context
 from common.entity.schemas.user import (
@@ -11,7 +11,6 @@ from common.entity.schemas.user import (
     UpdateProfileRequest,
 )
 from common.utils import create_access_token, hash_password, verify_password
-from fastapi import HTTPException, status
 from models.user import User
 
 

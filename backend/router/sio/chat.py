@@ -4,7 +4,12 @@ Socket.IO 聊天路由
 from typing import Dict
 
 from socketio import AsyncServer
+
+from common import RequestContext
+from common.context import set_request_context
 from common.logger import get_logger
+from common.orm.db import get_db_session
+from common.utils import decode_access_token
 from services import RagService
 
 logger = get_logger(__name__)
@@ -29,7 +34,6 @@ class SocketIOChatHandler:
                 return False
 
             try:
-                from common.utils import decode_access_token
                 payload = decode_access_token(token)
                 user_id = payload.get('sub')
 
@@ -108,10 +112,6 @@ class SocketIOChatHandler:
         import asyncio
 
         try:
-            # 设置请求上下文（因为 RAG 服务需要它）
-            from common.context import RequestContext, set_request_context
-            from common.orm.db import get_db_session
-
             async with get_db_session() as session:
                 ctx = RequestContext(
                     session=session,
@@ -122,8 +122,7 @@ class SocketIOChatHandler:
                 set_request_context(ctx)
 
                 # 限速配置
-                CHUNK_INTERVAL = 0.2  # 每 0.2 秒发送一次
-
+                chunk_interval = 0.2  # 每 0.2 秒发送一次
                 # 使用 RAG 服务的流式生成
                 full_answer = ""
                 buffer = ""
@@ -138,7 +137,7 @@ class SocketIOChatHandler:
                     elapsed = current_time - last_send_time
 
                     # 如果距离上次发送超过 0.2 秒，或者累积了足够内容，则发送
-                    if elapsed >= CHUNK_INTERVAL and buffer:
+                    if elapsed >= chunk_interval and buffer:
                         send_count += 1
                         logger.debug(f"发送第 {send_count} 批: {len(buffer)} 字符")
                         await self.sio.emit('chat_chunk', {

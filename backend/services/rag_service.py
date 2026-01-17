@@ -2,11 +2,14 @@
 RAG 服务 - 检索增强生成
 """
 from typing import List, Dict, AsyncGenerator
+
 from fastapi import HTTPException, status
 
 from common.context import get_request_context
 from common.entity.schemas.document import ChatResponse
 from common.logger import get_logger
+from models.knowledge_base import KnowledgeBase
+from processor import get_embedding_service, get_vector_db_service, get_llm_service
 
 logger = get_logger(__name__)
 
@@ -26,9 +29,6 @@ class RagService:
         Returns:
             ChatResponse: 问答响应
         """
-        from models.knowledge_base import KnowledgeBase
-        from processor import get_embedding_service, get_vector_db_service, get_llm_service
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(
@@ -117,9 +117,6 @@ class RagService:
         Yields:
             str: 生成的文本片段
         """
-        from models.knowledge_base import KnowledgeBase
-        from processor import get_embedding_service, get_vector_db_service, get_llm_service
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(
@@ -194,9 +191,6 @@ class RagService:
         Returns:
             List[Dict]: 相关文档来源列表
         """
-        from models.knowledge_base import KnowledgeBase
-        from processor import get_embedding_service, get_vector_db_service
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(

@@ -1,4 +1,4 @@
-from common.base_router import NO_AUTH, ApiRouter
+from common.base_router import ApiRouter
 from common.entity.base_response import BaseResponse
 from common.entity.schemas.knowledge_base import (
     KnowledgeBaseCreateRequest,

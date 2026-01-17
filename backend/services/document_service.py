@@ -1,18 +1,23 @@
-import os
 import asyncio
+import os
 from pathlib import Path
-from typing import Optional
+
 from fastapi import HTTPException, status, UploadFile
 from sqlalchemy import select, func
 
+from common import use_test_session
+from common.config import settings
 from common.context import get_request_context
-from common.logger import get_logger
 from common.entity.schemas.document import (
-    DocumentListRequest,
     DocumentResponse,
     DocumentListResponse,
 )
-from common.config import settings
+from common.logger import get_logger
+from common.orm.db import AsyncSessionLocal
+from models.document import Document
+from models.knowledge_base import KnowledgeBase
+from processor import TextExtractor, TextChunker, get_embedding_service
+from processor import get_vector_db_service
 
 logger = get_logger(__name__)
 
@@ -46,9 +51,6 @@ class DocumentService:
         Returns:
             DocumentResponse: 创建的文档信息
         """
-        from models.document import Document
-        from models.knowledge_base import KnowledgeBase
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(
@@ -112,10 +114,6 @@ class DocumentService:
         """
         异步处理文档（提取文本、分块、向量化）
         """
-        from models.document import Document
-        from processor import TextExtractor, TextChunker, get_embedding_service, get_vector_db_service
-        from common.orm.db import AsyncSessionLocal
-        from common import use_test_session
 
         # 创建新的 session 用于后台任务
         async with AsyncSessionLocal() as session:
@@ -221,8 +219,6 @@ class DocumentService:
         Returns:
             DocumentListResponse: 文档列表和总数
         """
-        from models.document import Document
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(
@@ -283,9 +279,6 @@ class DocumentService:
         Raises:
             HTTPException: 文档不存在或删除失败
         """
-        from models.document import Document
-        from processor import get_vector_db_service
-
         ctx = get_request_context()
         if ctx.user_id is None:
             raise HTTPException(

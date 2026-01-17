@@ -1,14 +1,12 @@
 from fastapi import File, UploadFile, Form
 
-from common.base_router import NO_AUTH, ApiRouter
+from common.base_router import ApiRouter
 from common.entity.base_response import BaseResponse
 from common.entity.schemas.document import (
     DocumentListRequest,
     DocumentListResponse,
     DocumentResponse,
-    DocumentDeleteRequest,
 )
-
 from services import DocumentService
 
 # 默认所有路由需要认证
